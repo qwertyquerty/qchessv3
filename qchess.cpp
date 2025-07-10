@@ -794,7 +794,7 @@ void iterative_deepening(chess::Board& board) {
     stop = true;
 }
 
-chess::Board board = chess::Board::fromFen("r4r1k/1p3pRp/p1b1pP2/3pP3/P1q5/5N1P/2PB1P2/R2QK3 w Q - 1 20");
+chess::Board board = chess::Board(chess::constants::STARTPOS);
 
 int main() {
     iterative_deepening(board);
