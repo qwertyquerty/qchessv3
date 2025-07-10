@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <deque>
 #include <set>
+#include <vector>
 
 #define VERSION "QChess v3.0"
 #define AUTHOR "qwertyquerty"
@@ -82,7 +83,7 @@ int8_t DOUBLE_BISHOP_BONUS[2] = {34, 55};
 
 int8_t TEMPO_BONUS[2] = {20, 0};
 
-#define MAX_HISTORY_VALUE 1000
+#define MAX_HISTORY_VALUE 10000
 #define HISTORY_SHRINK_FACTOR 2
 
 #define DELTA_PRUNING_CUTOFF 1000
@@ -227,7 +228,7 @@ bool is_quiet_move(chess::Board& board, const chess::Move& move, int8_t quiescen
     return j;
 }
 
-int32_t score_move(chess::Board& board, const chess::Move& move, const chess::Move& last_move, int8_t level, float phase, const chess::Move pt_best_move = chess::Move::NO_MOVE) {
+int32_t score_move(chess::Board& board, const chess::Move& move, std::vector<chess::Move>& move_stack, int8_t level, float phase, const chess::Move pt_best_move = chess::Move::NO_MOVE) {
     if (move == pt_best_move) {
         return 30000;
     }
@@ -251,15 +252,16 @@ int32_t score_move(chess::Board& board, const chess::Move& move, const chess::Mo
         km_idx++;
     }
 
-    // TODO: countermove
-
-    // TODO: capture last moved piece
-    if (last_move != chess::Move::NO_MOVE && last_move.to().index() == move.to().index()) {
+    if (move_stack.size() >= 2 && move == countermove_table[move_stack[-2].from().index()][move_stack[-2].to().index()]) {
         return 26000;
     }
 
-    if (board.givesCheck(move) != chess::CheckType::NO_CHECK) {
+    if (move_stack.size() > 0 && move_stack[move_stack.size()-1] != chess::Move::NULL_MOVE && move_stack[move_stack.size()-1].to().index() == move.to().index()) {
         return 25000;
+    }
+
+    if (board.givesCheck(move) != chess::CheckType::NO_CHECK) {
+        return 24000;
     }
 
     int32_t score = history_table[board.sideToMove()][move.from().index()][move.to().index()];
@@ -282,11 +284,11 @@ int32_t score_move(chess::Board& board, const chess::Move& move, const chess::Mo
     return score;
 }
 
-void sort_moves(chess::Movelist& moves, chess::Board& board, const chess::Move& last_move, int8_t level, const chess::Move pt_best_move = chess::Move::NO_MOVE) {
+void sort_moves(chess::Movelist& moves, chess::Board& board, std::vector<chess::Move>& move_stack, int8_t level, const chess::Move pt_best_move = chess::Move::NO_MOVE) {
     float phase = game_phase(board);
 
     for (chess::Move& move : moves) {
-        move.setScore(score_move(board, move, last_move, level, phase, pt_best_move));
+        move.setScore(score_move(board, move, move_stack, level, phase, pt_best_move));
     }
 
     std::sort(moves.begin(), moves.end(), [](const auto& lhs, const auto& rhs) {
@@ -400,7 +402,7 @@ int64_t now_ms() {
     ).count();
 }
 
-int32_t quiescence(chess::Board& board, const chess::Move& last_move, int8_t depth, int8_t level, int32_t alpha, int32_t beta) {
+int32_t quiescence(chess::Board& board, std::vector<chess::Move>& move_stack, int8_t depth, int8_t level, int32_t alpha, int32_t beta) {
     nodes += 1;
 
     if (level > seldepth) {
@@ -432,12 +434,16 @@ int32_t quiescence(chess::Board& board, const chess::Move& last_move, int8_t dep
         }
     }
 
-    sort_moves(quiescence_moves, board, last_move, level);
+    sort_moves(quiescence_moves, board, move_stack, level);
 
     for (chess::Move move : quiescence_moves) {
         board.makeMove(move);
-        score = -quiescence(board, move, depth-1, level+1, -beta, -alpha);
+        move_stack.push_back(move);
+
+        score = -quiescence(board, move_stack, depth-1, level+1, -beta, -alpha);
+
         board.unmakeMove(move);
+        move_stack.pop_back();
 
         if (score >= beta) {
             return beta;
@@ -451,7 +457,7 @@ int32_t quiescence(chess::Board& board, const chess::Move& last_move, int8_t dep
     return alpha;
 }
 
-int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t depth, int8_t level, int32_t alpha, int32_t beta, bool can_null_move=true) {
+int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, int8_t depth, int8_t level, int32_t alpha, int32_t beta, bool can_null_move=true) {
     nodes += 1;
 
     int32_t alpha_orig = alpha;
@@ -492,7 +498,7 @@ int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t dep
     }
 
     if (depth <= 0) {
-        return quiescence(board, last_move, depth, level, alpha, beta);
+        return quiescence(board, move_stack, depth, level, alpha, beta);
     }
 
     bool futility_prunable = false;
@@ -513,9 +519,12 @@ int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t dep
             
             if (nmp_reduction > 0) {
                 board.makeNullMove();
-                chess::Move null_move = chess::Move::NO_MOVE;
-                score = alpha_beta(board, null_move, depth - nmp_reduction, level+1, -beta, -beta+1, false);
+                move_stack.push_back(chess::Move::NULL_MOVE);
+
+                score = alpha_beta(board, move_stack, depth - nmp_reduction, level+1, -beta, -beta+1, false);
+
                 board.unmakeNullMove();
+                move_stack.pop_back();
 
                 if (score == SCORE_NONE) {
                     return SCORE_NONE;
@@ -564,7 +573,7 @@ int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t dep
     int32_t best_score = -CHECKMATE_SCORE-1;
     chess::Movelist moves;
     chess::movegen::legalmoves(moves, board);
-    sort_moves(moves, board, last_move, level, pt_best_move);
+    sort_moves(moves, board, move_stack, level, pt_best_move);
 
     for (chess::Move move : moves) {
         move_count++;
@@ -584,16 +593,17 @@ int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t dep
         }
 
         board.makeMove(move);
-        
+        move_stack.push_back(move);
 
         if (board.isGameOver().second != chess::GameResult::NONE) {
             score = (board.isGameOver().first == chess::GameResultReason::CHECKMATE) ? -CHECKMATE_SCORE + level : 0;
         }
         else {
-            score = alpha_beta(board, move, depth-1-reduction, level+1, -alpha-1, -alpha);
+            score = alpha_beta(board, move_stack, depth-1-reduction, level+1, -alpha-1, -alpha);
         }
 
         board.unmakeMove(move);
+        move_stack.pop_back();
 
         if (score == SCORE_NONE) {
             return SCORE_NONE;
@@ -603,8 +613,12 @@ int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t dep
 
         if ((score > alpha) && (score < beta)) {
             board.makeMove(move);
-            score = alpha_beta(board, move, depth-1, level+1, -beta, -alpha);
+            move_stack.push_back(move);
+
+            score = alpha_beta(board, move_stack, depth-1, level+1, -beta, -alpha);
+  
             board.unmakeMove(move);
+            move_stack.pop_back();
 
             if (score == SCORE_NONE) {
                 return SCORE_NONE;
@@ -628,6 +642,9 @@ int32_t alpha_beta(chess::Board& board, const chess::Move& last_move, int8_t dep
                 }
 
                 // TODO: countermove heuristic
+                if (move_stack.size() >= 2) {
+                    countermove_table[move_stack[-2].from().index()][move_stack[-2].to().index()] = move;
+                }
             }
 
             if (pt_entry_exists || (position_table.size() < MAX_PTABLE_SIZE)) {
@@ -680,7 +697,7 @@ void iterative_deepening(chess::Board& board) {
 
     int32_t gamma = score_board(board);
 
-    chess::Move last_move = chess::Move::NO_MOVE;
+    std::vector<chess::Move> move_stack;
 
     while (!stop && depth < MAX_DEPTH) {
         seldepth = 0;
@@ -692,7 +709,7 @@ void iterative_deepening(chess::Board& board) {
             while (true) {
                 int32_t alpha = gamma + aspw_lower;
                 int32_t beta = gamma + aspw_higher;
-                score = alpha_beta(board, last_move, depth, 0, alpha, beta);
+                score = alpha_beta(board, move_stack, depth, 0, alpha, beta);
 
                 if (score == SCORE_NONE) {
                     break;
@@ -712,7 +729,7 @@ void iterative_deepening(chess::Board& board) {
             }
         }
         else {
-            score = alpha_beta(board, last_move, depth, 0, -CHECKMATE_SCORE, CHECKMATE_SCORE);
+            score = alpha_beta(board, move_stack, depth, 0, -CHECKMATE_SCORE, CHECKMATE_SCORE);
             gamma = score;
         }
 
@@ -746,7 +763,7 @@ void iterative_deepening(chess::Board& board) {
     if (bestmove == chess::Move::NO_MOVE) {
         chess::Movelist moves;
         chess::movegen::legalmoves(moves, board);
-        sort_moves(moves, board, last_move, 0);
+        sort_moves(moves, board, move_stack, 0);
         bestmove = moves[0];
     }
 
@@ -754,8 +771,7 @@ void iterative_deepening(chess::Board& board) {
     stop = true;
 }
 
-//chess::Board board = chess::Board(chess::constants::STARTPOS);
-chess::Board board = chess::Board::fromFen("r4r1k/1p3pRp/p1b1pP2/3pP3/P1q5/5N1P/2PB1P2/R2QK3 w Q - 1 20");
+chess::Board board = chess::Board(chess::constants::STARTPOS);
 
 int main() {
     iterative_deepening(board);
