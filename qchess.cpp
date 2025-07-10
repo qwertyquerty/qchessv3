@@ -142,30 +142,30 @@ static const int16_t ENDGAME_PIECE_POSITION_TABLES[6][64] = {
 	{-82, -60, -43, -33, -44, -32, -55, -86, -47, -23, -11, -2, 3, -2, -20, -40, -34, -11, 9, 24, 23, 18, -2, -17, -34, 2, 29, 43, 46, 30, 11, -7, -17, 15, 33, 42, 45, 43, 26, -4, -10, 10, 35, 40, 46, 53, 30, 2, -25, 4, 10, 16, 22, 27, 20, -7, -84, -46, -28, -6, -23, -11, 0, -90}
 };
 
-static const int8_t PIECE_MOBILITY_TABLES[6][28] = {
+static const int8_t PIECE_MOBILITY_TABLES[6][2][28] = {
     { // Pawn
-		(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        (0, -5, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, -5, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     },
     { // Knight
-    	(-21, -6, 2, 5, 9, 11, 11, 11, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        (-21, -6, 2, 5, 9, 11, 11, 11, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    	{-21, -6, 2, 5, 9, 11, 11, 11, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {-21, -6, 2, 5, 9, 11, 11, 11, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     },
     { // Bishop
-		(-45, -34, -22, -16, -7, 3, 9, 13, 16, 14, 14, 16, 16, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        (-45, -34, -22, -16, -7, 3, 9, 13, 16, 14, 14, 16, 16, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		{-45, -34, -22, -16, -7, 3, 9, 13, 16, 14, 14, 16, 16, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {-45, -34, -22, -16, -7, 3, 9, 13, 16, 14, 14, 16, 16, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     },
     { // Rook
-		(-29, -16, -12, -6, -4, 1, 4, 6, 9, 13, 13, 14, 16, 17, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        (-29, -16, -12, -6, -4, 1, 4, 6, 9, 13, 13, 14, 16, 17, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		{-29, -16, -12, -6, -4, 1, 4, 6, 9, 13, 13, 14, 16, 17, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {-29, -16, -12, -6, -4, 1, 4, 6, 9, 13, 13, 14, 16, 17, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     },
     { // Queen
-    	(-55, -80, -39, -37, -44, -33, -14, -29, -13, -17, 2, -4, 2, 15, 20, 27, 22, 42, 47, 48, 51, 51, 54, 47, 50, 56, 46, 75),
-        (-20, -11, -31, -21, -19, -14, -10, -9, -5, -2, -2, 0, 3, -1, 3, 4, 3, 2, 6, 16, 25, 25, 19, 33, 28, 37, 20, 78)
+    	{-55, -80, -39, -37, -44, -33, -14, -29, -13, -17, 2, -4, 2, 15, 20, 27, 22, 42, 47, 48, 51, 51, 54, 47, 50, 56, 46, 75},
+        {-20, -11, -31, -21, -19, -14, -10, -9, -5, -2, -2, 0, 3, -1, 3, 4, 3, 2, 6, 16, 25, 25, 19, 33, 28, 37, 20, 78}
     },
     { // King
-	    (-20, -5, 0, 0, 0, -5, -10, -20, -20, -20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-		(-50, -40, -30, -20, -10, 0, 10, 20, 20, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+	    {-20, -5, 0, 0, 0, -5, -10, -20, -20, -20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{-50, -40, -30, -20, -10, 0, 10, 20, 20, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     },
 };
 
@@ -324,8 +324,8 @@ int32_t score_board(chess::Board& board) {
             score += (uint8_t)pov_square.rank() * WILL_TO_PUSH * color_mod;
 
             score += lerp(
-                PHASED_CP_PIECE_VALUES[phase::MIDGAME][piece.type()],
-                PHASED_CP_PIECE_VALUES[phase::ENDGAME][piece.type()],
+                PHASED_CP_PIECE_VALUES[MIDGAME][piece.type()],
+                PHASED_CP_PIECE_VALUES[ENDGAME][piece.type()],
                 phase
             ) * color_mod;
 
@@ -335,9 +335,33 @@ int32_t score_board(chess::Board& board) {
         }
     }
 
-    // TODO: mobility
+    chess::Movelist mobility_moves;
+
+    for (int side = 0; side < 2; side++) {
+        uint8_t piece_gen_type = 1;
+        for (uint8_t piece = 0; piece < 6; piece++) {
+            chess::movegen::legalmoves(mobility_moves, board, piece_gen_type);
+            uint8_t move_count = mobility_moves.size();
+
+            score += lerp(PIECE_MOBILITY_TABLES[piece][MIDGAME][move_count], PIECE_MOBILITY_TABLES[piece][ENDGAME][move_count], phase) * COLOR_MOD[board.sideToMove()];
+            mobility_moves.clear();
+            piece_gen_type *= 2;
+        }
+
+        if (side == 0) {board.makeNullMove();}
+        else {board.unmakeNullMove();}
+    }
 
     // TODO: double bishop bonus
+    uint8_t dbb = lerp(DOUBLE_BISHOP_BONUS[MIDGAME], DOUBLE_BISHOP_BONUS[ENDGAME], phase);
+
+    if (board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() == 2) {
+        score += dbb;
+    };
+
+    if (board.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).count() == 2) {
+        score -= dbb;
+    }
 
 	uint8_t dpp = lerp(DOUBLED_PAWN_PENALTY[MIDGAME], DOUBLED_PAWN_PENALTY[ENDGAME], phase);
 	uint8_t tpp = lerp(TRIPLED_PAWN_PENALTY[MIDGAME], TRIPLED_PAWN_PENALTY[ENDGAME], phase);
@@ -369,7 +393,7 @@ int32_t score_board(chess::Board& board) {
 
     score *= COLOR_MOD[board.sideToMove()];
 
-    score += lerp(TEMPO_BONUS[phase::MIDGAME], TEMPO_BONUS[phase::ENDGAME], phase);
+    score += lerp(TEMPO_BONUS[MIDGAME], TEMPO_BONUS[ENDGAME], phase);
 
     return score;
 }
@@ -641,7 +665,6 @@ int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, in
                     shrink_history(history_table);
                 }
 
-                // TODO: countermove heuristic
                 if (move_stack.size() >= 2) {
                     countermove_table[move_stack[-2].from().index()][move_stack[-2].to().index()] = move;
                 }
@@ -771,7 +794,7 @@ void iterative_deepening(chess::Board& board) {
     stop = true;
 }
 
-chess::Board board = chess::Board(chess::constants::STARTPOS);
+chess::Board board = chess::Board::fromFen("r4r1k/1p3pRp/p1b1pP2/3pP3/P1q5/5N1P/2PB1P2/R2QK3 w Q - 1 20");
 
 int main() {
     iterative_deepening(board);
