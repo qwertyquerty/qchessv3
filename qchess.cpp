@@ -9,6 +9,7 @@
 #include <deque>
 #include <set>
 #include <vector>
+#include <thread>
 
 #define VERSION "QChess v3.0"
 #define AUTHOR "qwertyquerty"
@@ -95,7 +96,7 @@ int8_t TEMPO_BONUS[2] = {20, 0};
 #define CHECKMATE_SCORE 100000
 #define SCORE_NONE 200000
 
-#define IS_MATE_SCORE(score) ((std::abs(score)+MAX_DEPTH) >= CHECKMATE_SCORE)
+#define IS_MATE_SCORE(score) ((std::abs(score)+MAX_DEPTH) >= CHECKMATE_SCORE && score != SCORE_NONE)
 
 static const int8_t COLOR_MOD[2] = {1, -1};
 
@@ -169,13 +170,14 @@ static const int8_t PIECE_MOBILITY_TABLES[6][2][28] = {
     },
 };
 
-static bool stop = false;
+static bool stop = true;
 static uint64_t nodes = 0;
 static int64_t search_start_time = 0;
 static std::deque<chess::Move> killer_moves[MAX_DEPTH];
 static chess::Move countermove_table[N_SQUARES][N_SQUARES] = {0};
 static uint16_t history_table[N_PLAYERS][N_SQUARES][N_SQUARES] = {0};
 static uint16_t seldepth = 0;
+static chess::Board board = chess::Board(chess::constants::STARTPOS);
 
 struct position_table_entry {
     pt_flag flag;
@@ -482,6 +484,10 @@ int32_t quiescence(chess::Board& board, std::vector<chess::Move>& move_stack, in
 }
 
 int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, int8_t depth, int8_t level, int32_t alpha, int32_t beta, bool can_null_move=true) {
+    if (stop) {
+        return SCORE_NONE;
+    }
+
     nodes += 1;
 
     int32_t alpha_orig = alpha;
@@ -699,7 +705,7 @@ int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, in
     return alpha;
 }
 
-void iterative_deepening(chess::Board& board) {
+void iterative_deepening() {
     search_start_time = now_ms();
 
     stop = false;
@@ -756,28 +762,30 @@ void iterative_deepening(chess::Board& board) {
             gamma = score;
         }
 
-        chess::Movelist pv_line;
-        generate_pv_line(pv_line, board);
+        if (score != SCORE_NONE) {
+            chess::Movelist pv_line;
+            generate_pv_line(pv_line, board);
 
-        std::string depth_string = std::format(" depth {} seldepth {}", depth, seldepth);
-        std::string time_string = std::format(" time {}", now_ms()-search_start_time);
-        std::string hashfull_string = std::format(" hashfull {}", (position_table.size() * 1000 / MAX_PTABLE_SIZE));
-        std::string pv_string = " ";
-        for (chess::Move move : pv_line) {
-            pv_string += chess::uci::moveToUci(move) + " ";
-        }
-        uint32_t nodes_per_second = nodes * 1000 / (std::max(now_ms()-search_start_time, (int64_t)1));
+            std::string depth_string = std::format(" depth {} seldepth {}", depth, seldepth);
+            std::string time_string = std::format(" time {}", now_ms()-search_start_time);
+            std::string hashfull_string = std::format(" hashfull {}", (position_table.size() * 1000 / MAX_PTABLE_SIZE));
+            std::string pv_string = " ";
+            for (chess::Move move : pv_line) {
+                pv_string += chess::uci::moveToUci(move) + " ";
+            }
+            uint32_t nodes_per_second = nodes * 1000 / (std::max(now_ms()-search_start_time, (int64_t)1));
 
-        bestmove = pv_line[0];
+            bestmove = pv_line[0];
 
-        std::cout << "info nodes " << nodes << " nps " << nodes_per_second << time_string << hashfull_string << depth_string << " score ";
+            std::cout << "info nodes " << nodes << " nps " << nodes_per_second << time_string << hashfull_string << depth_string << " score ";
 
-        if (IS_MATE_SCORE(score)) {
-            uint8_t mate_in = std::ceil((float)pv_line.size() / 2.0f) * COLOR_MOD[score < 0];
-            std::cout << "mate " << (int)mate_in << pv_string << std::endl;
-        }
-        else {
-            std::cout << "cp " << score << " pv" << pv_string << std::endl;
+            if (IS_MATE_SCORE(score)) {
+                uint8_t mate_in = std::ceil((float)pv_line.size() / 2.0f) * COLOR_MOD[score < 0];
+                std::cout << "mate " << (int)mate_in << pv_string << std::endl;
+            }
+            else {
+                std::cout << "cp " << score << " pv" << pv_string << std::endl;
+            }
         }
 
         depth += 1;
@@ -794,9 +802,68 @@ void iterative_deepening(chess::Board& board) {
     stop = true;
 }
 
-chess::Board board = chess::Board(chess::constants::STARTPOS);
 
 int main() {
-    iterative_deepening(board);
+    while (true) {
+        std::thread* search_thread;
+        std::string cmd;
+        std::cin >> cmd;
+
+        if (cmd == "uci") {
+            std::cout << std::format("id name {}", VERSION) << std::endl;
+            std::cout << std::format("id author {}", AUTHOR) << std::endl;
+            std::cout << "uciok" << std::endl;
+        }
+        else if (cmd == "isready") {
+            std::cout << "readyok" << std::endl;
+        }
+        else if (cmd == "quit") {
+            if (!stop) {
+                stop = true;
+                search_thread->join();
+                delete search_thread;
+            }
+            break;
+        }
+        else if (cmd == "go") {
+            if (stop) {
+                search_thread = new std::thread(iterative_deepening);
+            }
+        }
+        else if (cmd == "stop") {
+            if (!stop) {
+                stop = true;
+                search_thread->join();
+                delete search_thread;
+            }
+        }
+        else if (cmd == "position") {
+            if (stop) {
+                std::string subcmd;
+                std::cin >> subcmd;
+                if (subcmd == "startpos") {
+                    board = chess::Board(chess::constants::STARTPOS);
+                }
+                else if (subcmd == "fen") {
+                    std::string fen;
+                    std::getline(std::cin, fen);
+                    board = chess::Board::fromFen(fen);
+                }
+
+                std::string movescmd;
+
+                if (std::cin >> movescmd && movescmd == "moves") {
+                    std::string moves;
+                    std::getline(std::cin, moves);
+                    std::istringstream moves_ss(moves);
+
+                    std::string move;
+                    while (moves_ss >> move) {
+                        board.makeMove(chess::uci::uciToMove(board, move));
+                    }
+                }
+            }
+        }
+    }
     return 0;
 }
