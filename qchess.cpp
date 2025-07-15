@@ -32,7 +32,7 @@ enum phase {
 
 #define QUIESCENCE_CHECK_DEPTH_LIMIT 3
 
-#define ASPIRATION_WINDOW_DEFAULT 100
+#define ASPIRATION_WINDOW_DEFAULT 20
 #define ASPIRATION_INCREASE_EXPONENT 4
 #define ASPIRATION_WINDOW_DEPTH 5
 
@@ -87,7 +87,7 @@ int8_t TEMPO_BONUS[2] = {20, 0};
 #define MAX_HISTORY_VALUE 10000
 #define HISTORY_SHRINK_FACTOR 2
 
-#define DELTA_PRUNING_CUTOFF 1000
+#define DELTA_PRUNING_CUTOFF 950
 
 #define MAX_KILLER_MOVES 16
 
@@ -219,7 +219,7 @@ bool is_quiet_move(chess::Board& board, const chess::Move& move, int8_t quiescen
         j= false;
     }
 
-    if ((quiescence_depth <= QUIESCENCE_CHECK_DEPTH_LIMIT) && (board.givesCheck(move) != chess::CheckType::NO_CHECK)) {
+    if ((quiescence_depth <= QUIESCENCE_CHECK_DEPTH_LIMIT) && ((board.givesCheck(move) != chess::CheckType::NO_CHECK) || board.inCheck())) {
         j= false;
     }
 
@@ -267,21 +267,6 @@ int32_t score_move(chess::Board& board, const chess::Move& move, std::vector<che
     }
 
     int32_t score = history_table[board.sideToMove()][move.from().index()][move.to().index()];
-    if (attacker.type() == chess::PieceType::KING) {
-        score -= CP_PIECE_VALUES[chess::PieceType(chess::PieceType::PAWN)];
-    }
-
-    score -= lerp(
-        MIDGAME_PIECE_POSITION_TABLES[attacker.type()][move.from().relative_square(board.sideToMove()).index()],
-        ENDGAME_PIECE_POSITION_TABLES[attacker.type()][move.from().relative_square(board.sideToMove()).index()],
-        phase
-    );
-
-    score += lerp(
-        MIDGAME_PIECE_POSITION_TABLES[attacker.type()][move.to().relative_square(board.sideToMove()).index()],
-        ENDGAME_PIECE_POSITION_TABLES[attacker.type()][move.to().relative_square(board.sideToMove()).index()],
-        phase
-    );
 
     return score;
 }
@@ -329,7 +314,7 @@ int32_t score_board(chess::Board& board) {
                 PHASED_CP_PIECE_VALUES[MIDGAME][piece.type()],
                 PHASED_CP_PIECE_VALUES[ENDGAME][piece.type()],
                 phase
-            ) * color_mod;
+            ) * color_mod * (0.5 + phase); // pieces value matters more in late game
 
             if (piece.type() == chess::PieceType::PAWN) {
                 pawn_file_counts[piece.color()][pov_square.file()]++;
@@ -345,7 +330,7 @@ int32_t score_board(chess::Board& board) {
             chess::movegen::legalmoves(mobility_moves, board, piece_gen_type);
             uint8_t move_count = mobility_moves.size();
 
-            score += lerp(PIECE_MOBILITY_TABLES[piece][MIDGAME][move_count], PIECE_MOBILITY_TABLES[piece][ENDGAME][move_count], phase) * COLOR_MOD[board.sideToMove()];
+            score += lerp(PIECE_MOBILITY_TABLES[piece][MIDGAME][move_count], PIECE_MOBILITY_TABLES[piece][ENDGAME][move_count], phase) * COLOR_MOD[side];
             mobility_moves.clear();
             piece_gen_type *= 2;
         }
@@ -355,7 +340,7 @@ int32_t score_board(chess::Board& board) {
     }
 
     // TODO: double bishop bonus
-    uint8_t dbb = lerp(DOUBLE_BISHOP_BONUS[MIDGAME], DOUBLE_BISHOP_BONUS[ENDGAME], phase);
+    int8_t dbb = lerp(DOUBLE_BISHOP_BONUS[MIDGAME], DOUBLE_BISHOP_BONUS[ENDGAME], phase);
 
     if (board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() == 2) {
         score += dbb;
@@ -365,9 +350,9 @@ int32_t score_board(chess::Board& board) {
         score -= dbb;
     }
 
-	uint8_t dpp = lerp(DOUBLED_PAWN_PENALTY[MIDGAME], DOUBLED_PAWN_PENALTY[ENDGAME], phase);
-	uint8_t tpp = lerp(TRIPLED_PAWN_PENALTY[MIDGAME], TRIPLED_PAWN_PENALTY[ENDGAME], phase);
-	uint8_t ipp = lerp(ISOLATED_PAWN_PENALTY[MIDGAME], ISOLATED_PAWN_PENALTY[ENDGAME], phase);
+	int8_t dpp = lerp(DOUBLED_PAWN_PENALTY[MIDGAME], DOUBLED_PAWN_PENALTY[ENDGAME], phase);
+	int8_t tpp = lerp(TRIPLED_PAWN_PENALTY[MIDGAME], TRIPLED_PAWN_PENALTY[ENDGAME], phase);
+	int8_t ipp = lerp(ISOLATED_PAWN_PENALTY[MIDGAME], ISOLATED_PAWN_PENALTY[ENDGAME], phase);
 
 
     for (uint8_t file = 0; file < 8; file++) {
@@ -378,16 +363,16 @@ int32_t score_board(chess::Board& board) {
 
         if (
             pawn_file_counts[(int8_t)chess::Color::WHITE][file] > 0 && 
-            (file == 0 || pawn_file_counts[(int8_t)chess::Color::WHITE][file-1]) == 0 &&
-            (file == 7 || pawn_file_counts[(int8_t)chess::Color::WHITE][file+1]) == 0
+            (file == 0 || pawn_file_counts[(int8_t)chess::Color::WHITE][file-1] == 0) &&
+            (file == 7 || pawn_file_counts[(int8_t)chess::Color::WHITE][file+1] == 0)
         ) {
             score += ipp;
         }
 
         if (
             pawn_file_counts[(int8_t)chess::Color::BLACK][file] > 0 && 
-            (file == 0 || pawn_file_counts[(int8_t)chess::Color::BLACK][file-1]) == 0 &&
-            (file == 7 || pawn_file_counts[(int8_t)chess::Color::BLACK][file+1]) == 0
+            (file == 0 || pawn_file_counts[(int8_t)chess::Color::BLACK][file-1] == 0) &&
+            (file == 7 || pawn_file_counts[(int8_t)chess::Color::BLACK][file+1] == 0)
         ) {
             score -= ipp;
         }
@@ -780,8 +765,8 @@ void iterative_deepening() {
             std::cout << "info nodes " << nodes << " nps " << nodes_per_second << time_string << hashfull_string << depth_string << " score ";
 
             if (IS_MATE_SCORE(score)) {
-                uint8_t mate_in = std::ceil((float)pv_line.size() / 2.0f) * COLOR_MOD[score < 0];
-                std::cout << "mate " << (int)mate_in << pv_string << std::endl;
+                int8_t mate_in = std::ceil((float)pv_line.size() / 2.0f) * COLOR_MOD[score < 0];
+                std::cout << "mate " << (int)mate_in << " pv" << pv_string << std::endl;
             }
             else {
                 std::cout << "cp " << score << " pv" << pv_string << std::endl;
@@ -839,27 +824,39 @@ int main() {
         }
         else if (cmd == "position") {
             if (stop) {
+                std::string args;
+                std::getline(std::cin, args);
+                std::istringstream args_stream(args);
+
                 std::string subcmd;
-                std::cin >> subcmd;
-                if (subcmd == "startpos") {
-                    board = chess::Board(chess::constants::STARTPOS);
-                }
-                else if (subcmd == "fen") {
-                    std::string fen;
-                    std::getline(std::cin, fen);
-                    board = chess::Board::fromFen(fen);
-                }
+                std::string arg;
 
-                std::string movescmd;
+                if (args_stream >> subcmd) {
+                    if (subcmd == "startpos") {
+                        board = chess::Board(chess::constants::STARTPOS);
 
-                if (std::cin >> movescmd && movescmd == "moves") {
-                    std::string moves;
-                    std::getline(std::cin, moves);
-                    std::istringstream moves_ss(moves);
+                        if (!(args_stream >> arg)) {
+                            continue;
+                        }
+                    }
+                    else if (subcmd == "fen") {
+                        std::string fen = "";
 
-                    std::string move;
-                    while (moves_ss >> move) {
-                        board.makeMove(chess::uci::uciToMove(board, move));
+                        while (args_stream >> arg) {
+                            if (arg == "moves") {
+                                break;
+                            }
+                            fen += arg;
+                            fen += " ";
+                        }
+
+                        board = chess::Board::fromFen(fen);
+                    }
+
+                    if (arg == "moves") {
+                        while (args_stream >> arg) {
+                            board.makeMove(chess::uci::uciToMove(board, arg));
+                        }
                     }
                 }
             }
