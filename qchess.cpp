@@ -109,8 +109,8 @@ static const uint16_t REVERSE_FUTILITY_MARGINS[8] = {0, 70, 150, 240, 340, 450, 
 static const int16_t CP_PIECE_VALUES[7] = {100, 300, 300, 500, 900, 0, 0};
 
 static const int16_t PHASED_CP_PIECE_VALUES[2][7] = {
-    {85, 325, 330, 444, 998, 0, 0}, // midgame
-    {80, 289, 318, 560, 1016, 0, 0} // endgame
+    {77, 319, 327, 496, 985, 0, 0}, // midgame
+    {101, 330, 335, 499, 999, 0, 0} // endgame
 };
 
 static const int16_t MIDGAME_PIECE_POSITION_TABLES[6][64] = {
@@ -172,6 +172,11 @@ static const int8_t PIECE_MOBILITY_TABLES[6][2][28] = {
 
 static bool stop = true;
 static uint64_t nodes = 0;
+static int32_t movetime = 0;
+static int32_t wtime = 0;
+static int32_t btime = 0;
+static int32_t winc = 0;
+static int32_t binc = 0;
 static int64_t search_start_time = 0;
 static std::deque<chess::Move> killer_moves[MAX_DEPTH];
 static chess::Move countermove_table[N_SQUARES][N_SQUARES] = {0};
@@ -180,10 +185,10 @@ static uint16_t seldepth = 0;
 static chess::Board board = chess::Board(chess::constants::STARTPOS);
 
 struct position_table_entry {
-    pt_flag flag;
-    int8_t leaf_distance;
     int32_t value;
     chess::Move best_move;
+    pt_flag flag;
+    int8_t leaf_distance;
 };
 
 std::unordered_map<uint64_t, position_table_entry> position_table;
@@ -198,11 +203,11 @@ void shrink_history(uint16_t table[N_PLAYERS][N_SQUARES][N_SQUARES]) {
     }
 }
 
-int32_t lerp(int32_t start, int32_t end, float position) {
+constexpr inline int32_t lerp(int32_t start, int32_t end, float position) {
 	return (int32_t)((1-position) * (float)start + position * (float)end);
 }
 
-float game_phase(chess::Board& board) {
+float game_phase(const chess::Board& board) {
     int16_t remaining = 0;
     remaining += board.pieces(chess::PieceType::PAWN).count();
     remaining += board.pieces(chess::PieceType::KNIGHT).count() * 10;
@@ -213,24 +218,23 @@ float game_phase(chess::Board& board) {
     return std::max(0.0f, std::min(1.0f, (256.0f-(float)remaining)/256.0f));
 }
 
-bool is_quiet_move(chess::Board& board, const chess::Move& move, int8_t quiescence_depth = 0) {
-    bool j = true;
+bool is_quiet_move(const chess::Board& board, chess::Move move, int8_t quiescence_depth = 0) {
     if (board.isCapture(move)) {
-        j= false;
+        return false;
     }
 
     if ((quiescence_depth <= QUIESCENCE_CHECK_DEPTH_LIMIT) && ((board.givesCheck(move) != chess::CheckType::NO_CHECK) || board.inCheck())) {
-        j= false;
+        return false;
     }
 
     if (move.typeOf() == chess::Move::PROMOTION) {
-        j= false;
+        return false;
     }
 
-    return j;
+    return true;
 }
 
-int32_t score_move(chess::Board& board, const chess::Move& move, std::vector<chess::Move>& move_stack, int8_t level, float phase, const chess::Move pt_best_move = chess::Move::NO_MOVE) {
+int32_t score_move(const chess::Board& board, chess::Move move, std::vector<chess::Move>& move_stack, int8_t level, float phase, chess::Move pt_best_move = chess::Move::NO_MOVE) {
     if (move == pt_best_move) {
         return 30000;
     }
@@ -284,7 +288,7 @@ void sort_moves(chess::Movelist& moves, chess::Board& board, std::vector<chess::
 }
 
 int32_t score_board(chess::Board& board) {
-    if (board.isRepetition(1) || board.isHalfMoveDraw() || board.isInsufficientMaterial() || board.isGameOver().first == chess::GameResultReason::STALEMATE) {
+    if (board.isRepetition(2) || board.isHalfMoveDraw() || board.isInsufficientMaterial() || board.isGameOver().first == chess::GameResultReason::STALEMATE) {
         return 0;
     }
     
@@ -468,8 +472,12 @@ int32_t quiescence(chess::Board& board, std::vector<chess::Move>& move_stack, in
     return alpha;
 }
 
+bool stop_search() {
+    return stop || (movetime && (now_ms()-search_start_time) >= movetime);
+}
+
 int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, int8_t depth, int8_t level, int32_t alpha, int32_t beta, bool can_null_move=true) {
-    if (stop) {
+    if (stop_search()) {
         return SCORE_NONE;
     }
 
@@ -574,10 +582,10 @@ int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, in
         }
     }
 
-    if (outcome != chess::GameResult::NONE || board.isRepetition(1) || board.isHalfMoveDraw()) {
+    if (outcome != chess::GameResult::NONE || board.isRepetition(2) || board.isHalfMoveDraw()) {
         score = outcome_reason == chess::GameResultReason::CHECKMATE ? -CHECKMATE_SCORE + level : 0;
         if (pt_entry_exists || position_table.size() < MAX_PTABLE_SIZE) {
-            position_table[pt_hash] = {pt_flag::EXACT, depth, score, chess::Move::NO_MOVE};
+            position_table[pt_hash] = {score, chess::Move::NO_MOVE, pt_flag::EXACT, depth};
         }
 
         return score;
@@ -662,7 +670,7 @@ int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, in
             }
 
             if (pt_entry_exists || (position_table.size() < MAX_PTABLE_SIZE)) {
-                position_table[pt_hash] = {pt_flag::LOWER, depth, beta, move};
+                position_table[pt_hash] = {beta, move, pt_flag::LOWER, depth};
             }
 
             return beta;
@@ -680,10 +688,10 @@ int32_t alpha_beta(chess::Board& board, std::vector<chess::Move>& move_stack, in
 
     if (pt_entry_exists || (position_table.size() < MAX_PTABLE_SIZE)) {
         position_table[pt_hash] = {
-            (alpha <= alpha_orig) ? pt_flag::UPPER : pt_flag::EXACT,
-            depth,
             alpha,
-            best_move
+            best_move,
+            (alpha <= alpha_orig) ? pt_flag::UPPER : pt_flag::EXACT,
+            depth
         };
     }
 
@@ -713,7 +721,7 @@ void iterative_deepening() {
 
     std::vector<chess::Move> move_stack;
 
-    while (!stop && depth < MAX_DEPTH) {
+    while (!stop_search() && depth < MAX_DEPTH) {
         seldepth = 0;
         int32_t aspw_lower = -ASPIRATION_WINDOW_DEFAULT;
         int32_t aspw_higher = ASPIRATION_WINDOW_DEFAULT;
@@ -760,7 +768,7 @@ void iterative_deepening() {
             }
             uint32_t nodes_per_second = nodes * 1000 / (std::max(now_ms()-search_start_time, (int64_t)1));
 
-            bestmove = pv_line[0];
+            bestmove = pv_line.size() ? pv_line[0] : chess::Move::NO_MOVE;
 
             std::cout << "info nodes " << nodes << " nps " << nodes_per_second << time_string << hashfull_string << depth_string << " score ";
 
@@ -811,6 +819,42 @@ int main() {
             break;
         }
         else if (cmd == "go") {
+            std::string args;
+            std::getline(std::cin, args);
+            std::istringstream args_stream(args);
+            
+            std::string subcmd;
+
+            movetime = 0;
+            wtime = 0;
+            btime = 0;
+            winc = 0;
+            binc = 0;
+
+            while(args_stream >> subcmd) {
+                if (subcmd == "movetime") {
+                    args_stream >> movetime;
+                }
+                else if (subcmd == "wtime") {
+                    args_stream >> wtime;
+                }
+                else if (subcmd == "btime") {
+                    args_stream >> btime;
+                }
+                else if (subcmd == "winc") {
+                    args_stream >> winc;
+                }
+                else if (subcmd == "binc") {
+                    args_stream >> binc;
+                }
+            }
+
+            if (board.sideToMove() == chess::Color::WHITE && wtime != 0) {
+                movetime = std::max(std::min(wtime / 40 + winc, std::max(wtime / 2 - 1000, 0)), 50);
+            } else if (btime != 0) {
+                movetime = std::max(std::min(wtime / 40 + winc, std::max(wtime / 2 - 1000, 0)), 50);
+            }
+        
             if (stop) {
                 search_thread = new std::thread(iterative_deepening);
             }
