@@ -798,7 +798,7 @@ void iterative_deepening() {
 
 int main() {
     while (true) {
-        std::thread* search_thread;
+        std::thread* search_thread = nullptr;
         std::string cmd;
         std::cin >> cmd;
 
@@ -813,8 +813,10 @@ int main() {
         else if (cmd == "quit") {
             if (!stop) {
                 stop = true;
-                search_thread->join();
-                delete search_thread;
+                if (search_thread != nullptr) {
+                    search_thread->join();
+                    delete search_thread;
+                }
             }
             break;
         }
@@ -850,9 +852,9 @@ int main() {
             }
 
             if (board.sideToMove() == chess::Color::WHITE && wtime != 0) {
-                movetime = std::max(std::min(wtime / 40 + winc, std::max(wtime / 2 - 1000, 0)), 50);
+                movetime = std::max(std::min(wtime / 40 + winc-50, std::max(wtime / 2 - 1000, 0)), 50);
             } else if (btime != 0) {
-                movetime = std::max(std::min(wtime / 40 + winc, std::max(wtime / 2 - 1000, 0)), 50);
+                movetime = std::max(std::min(btime / 40 + binc-50, std::max(btime / 2 - 1000, 0)), 50);
             }
         
             if (stop) {
@@ -862,8 +864,10 @@ int main() {
         else if (cmd == "stop") {
             if (!stop) {
                 stop = true;
-                search_thread->join();
-                delete search_thread;
+                if (search_thread != nullptr) {
+                    search_thread->join();
+                    delete search_thread;
+                }
             }
         }
         else if (cmd == "position") {
