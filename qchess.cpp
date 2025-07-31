@@ -82,6 +82,8 @@ int8_t TRIPLED_PAWN_PENALTY[2] = {-12, -37};
 int8_t ISOLATED_PAWN_PENALTY[2] = {-7, -20};
 int8_t DOUBLE_BISHOP_BONUS[2] = {34, 55};
 
+int8_t OPEN_FILE_NEAR_KING_PENALTY[2] = {-30, 0};
+
 int8_t TEMPO_BONUS[2] = {20, 0};
 
 #define MAX_HISTORY_VALUE 10000
@@ -378,6 +380,26 @@ int32_t score_board(chess::Board& board) {
         ) {
             score -= ipp;
         }
+    }
+
+    int8_t ofnkp = lerp(OPEN_FILE_NEAR_KING_PENALTY[MIDGAME], OPEN_FILE_NEAR_KING_PENALTY[ENDGAME], phase);
+    int8_t white_king_file = chess::Square(board.pieces(chess::PieceType::KING, chess::Color::WHITE).lsb()).file();
+    int8_t black_king_file = chess::Square(board.pieces(chess::PieceType::KING, chess::Color::WHITE).lsb()).file();
+
+    if (
+        pawn_file_counts[(int8_t)chess::Color::WHITE][white_king_file] == 0 ||
+        pawn_file_counts[(int8_t)chess::Color::WHITE][std::max(white_king_file-1, 0)] == 0 ||
+        pawn_file_counts[(int8_t)chess::Color::WHITE][std::min(white_king_file+1, 7) == 0]
+    ) {
+        score += ofnkp;
+    }
+
+    if (
+        pawn_file_counts[(int8_t)chess::Color::BLACK][black_king_file] == 0 ||
+        pawn_file_counts[(int8_t)chess::Color::BLACK][std::max(black_king_file-1, 0)] == 0 ||
+        pawn_file_counts[(int8_t)chess::Color::BLACK][std::min(black_king_file+1, 7) == 0]
+    ) {
+        score -= ofnkp;
     }
 
     score *= COLOR_MOD[board.sideToMove()];
