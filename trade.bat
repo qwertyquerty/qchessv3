@@ -1,0 +1,1 @@
+.\fastchess\fastchess.exe -engine cmd=qchess_tb10.exe name=test -engine cmd=qchess_aspw25.exe name=control -each tc=8+0.08 -rounds 150 -repeat -concurrency 8 -recover -openings file=8moves_v3.pgn format=pgn -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05

@@ -32,11 +32,11 @@ enum phase {
 
 #define QUIESCENCE_CHECK_DEPTH_LIMIT 3
 
-#define ASPIRATION_WINDOW_DEFAULT 20
+#define ASPIRATION_WINDOW_DEFAULT 25
 #define ASPIRATION_INCREASE_EXPONENT 4
 #define ASPIRATION_WINDOW_DEPTH 5
 
-#define LATE_MOVE_REDUCTION_MOVES 4
+#define LATE_MOVE_REDUCTION_MOVES 3
 #define LATE_MOVE_REDUCTION_LEAF_DISTANCE 3
 #define LATE_MOVE_REDUCTION_TABLE_SIZE 32
 
@@ -89,7 +89,7 @@ int8_t TEMPO_BONUS[2] = {20, 0};
 
 #define DELTA_PRUNING_CUTOFF 950
 
-#define MAX_KILLER_MOVES 16
+#define MAX_KILLER_MOVES 32
 
 #define MAX_PTABLE_SIZE 200'000'000
 
@@ -318,7 +318,7 @@ int32_t score_board(chess::Board& board) {
                 PHASED_CP_PIECE_VALUES[MIDGAME][piece.type()],
                 PHASED_CP_PIECE_VALUES[ENDGAME][piece.type()],
                 phase
-            ) * color_mod * (0.5 + phase); // pieces value matters more in late game
+            ) * color_mod * (1 + (phase/2.0)); // pieces value matters more in late game
 
             if (piece.type() == chess::PieceType::PAWN) {
                 pawn_file_counts[piece.color()][pov_square.file()]++;
@@ -343,7 +343,6 @@ int32_t score_board(chess::Board& board) {
         else {board.unmakeNullMove();}
     }
 
-    // TODO: double bishop bonus
     int8_t dbb = lerp(DOUBLE_BISHOP_BONUS[MIDGAME], DOUBLE_BISHOP_BONUS[ENDGAME], phase);
 
     if (board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() == 2) {
@@ -357,7 +356,6 @@ int32_t score_board(chess::Board& board) {
     int8_t dpp = lerp(DOUBLED_PAWN_PENALTY[MIDGAME], DOUBLED_PAWN_PENALTY[ENDGAME], phase);
     int8_t tpp = lerp(TRIPLED_PAWN_PENALTY[MIDGAME], TRIPLED_PAWN_PENALTY[ENDGAME], phase);
     int8_t ipp = lerp(ISOLATED_PAWN_PENALTY[MIDGAME], ISOLATED_PAWN_PENALTY[ENDGAME], phase);
-
 
     for (uint8_t file = 0; file < 8; file++) {
         score += (pawn_file_counts[(int8_t)chess::Color::WHITE][file] == 2 ? dpp : 0);
