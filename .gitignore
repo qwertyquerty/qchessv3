@@ -1,0 +1,4 @@
+lichess-bot/*
+fastchess/*
+*.pgn
+*.exe

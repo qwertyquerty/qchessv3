@@ -77,9 +77,10 @@ int8_t LATE_MOVE_REDUCTION_TABLE[LATE_MOVE_REDUCTION_TABLE_SIZE][LATE_MOVE_REDUC
     {0,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3}
 };
 
-int8_t DOUBLED_PAWN_PENALTY[2] = {-7, -20};
+int8_t DOUBLED_PAWN_PENALTY[2] = {-10, -30};
 int8_t TRIPLED_PAWN_PENALTY[2] = {-12, -37};
-int8_t ISOLATED_PAWN_PENALTY[2] = {-7, -20};
+int8_t ISOLATED_PAWN_PENALTY[2] = {-25, -5};
+uint8_t PASSED_PAWN_BONUS[2] = {0, 50};
 int8_t DOUBLE_BISHOP_BONUS[2] = {34, 55};
 
 int8_t OPEN_FILE_NEAR_KING_PENALTY[2] = {-30, 0};
@@ -91,7 +92,7 @@ int8_t TEMPO_BONUS[2] = {20, 0};
 
 #define DELTA_PRUNING_CUTOFF 950
 
-#define MAX_KILLER_MOVES 32
+#define MAX_KILLER_MOVES 4
 
 #define MAX_PTABLE_SIZE 200'000'000
 
@@ -172,6 +173,21 @@ static const int8_t PIECE_MOBILITY_TABLES[6][2][28] = {
     },
 };
 
+chess::Bitboard PASSING_FIELDS[2][64] = {0};
+void generate_passing_fields() {
+    for (uint8_t color = 0; color < 2; color++) {
+        for (uint8_t square = 0; square < 64; square++) {
+            int8_t offset = chess::Color(color) == chess::Color::WHITE ? 8 : -8;
+            int8_t current_square = square + 2 * offset;
+            PASSING_FIELDS[color][square].clear();
+            while (current_square >=0 && current_square < 64) {
+                PASSING_FIELDS[color][square] |= chess::attacks::king(current_square) | chess::Bitboard::fromSquare(current_square);
+                current_square += offset;
+            }
+        }
+    }
+}
+
 static bool stop = true;
 static uint64_t nodes = 0;
 static int32_t movetime = 0;
@@ -241,37 +257,48 @@ int32_t score_move(const chess::Board& board, chess::Move move, std::vector<ches
         return 30000;
     }
 
+    // Pawn promotion
     if (move.typeOf() == chess::Move::PROMOTION) {
         return 29000;
     }
 
-    chess::Piece victim = board.at(move.to());
+    // Pawn about to promote
     chess::Piece attacker = board.at(move.from());
-
-    if (victim != chess::Piece::NONE) {
-        return 28000 + CP_PIECE_VALUES[victim.type()] - CP_PIECE_VALUES[attacker.type()];
+    if (attacker.type() == chess::PieceType::PAWN && (move.to().rank() == chess::Rank::RANK_2 || move.to().rank() == chess::Rank::RANK_7)) {
+        return 28000;
     }
 
+    // MVV - LVA
+    chess::Piece victim = board.at(move.to());
+    if (victim != chess::Piece::NONE) {
+        return 27000 + CP_PIECE_VALUES[victim.type()] - CP_PIECE_VALUES[attacker.type()];
+    }
+
+    // Killer move heuristic
     uint8_t km_idx = 0;
     for (chess::Move km : killer_moves[level]) {
         if (move == km) {
-            return 27000 - km_idx;
+            return 26000 - km_idx;
         }
         km_idx++;
     }
 
+    // Countermove heuristic
     if (move_stack.size() >= 2 && move == countermove_table[move_stack[-2].from().index()][move_stack[-2].to().index()]) {
-        return 26000;
-    }
-
-    if (move_stack.size() > 0 && move_stack[move_stack.size()-1] != chess::Move::NULL_MOVE && move_stack[move_stack.size()-1].to().index() == move.to().index()) {
         return 25000;
     }
 
-    if (board.givesCheck(move) != chess::CheckType::NO_CHECK) {
+    // Take last moved piece
+    if (move_stack.size() > 0 && move_stack[move_stack.size()-1] != chess::Move::NULL_MOVE && move_stack[move_stack.size()-1].to().index() == move.to().index()) {
         return 24000;
     }
 
+    // Checks
+    if (board.givesCheck(move) != chess::CheckType::NO_CHECK) {
+        return 23000;
+    }
+
+    // History heuristic
     int32_t score = history_table[board.sideToMove()][move.from().index()][move.to().index()];
 
     return score;
@@ -324,6 +351,12 @@ int32_t score_board(chess::Board& board) {
 
             if (piece.type() == chess::PieceType::PAWN) {
                 pawn_file_counts[piece.color()][pov_square.file()]++;
+
+                if ((uint8_t)pov_square.file() < 7) {
+                    if ((PASSING_FIELDS[piece.color()][square] & board.pieces(chess::PieceType::PAWN, ~piece.color())).empty()) {
+                        score += lerp(PASSED_PAWN_BONUS[MIDGAME], PASSED_PAWN_BONUS[ENDGAME], phase) * color_mod;
+                    }
+                }
             }
         }
     }
@@ -355,9 +388,9 @@ int32_t score_board(chess::Board& board) {
         score -= dbb;
     }
 
-    int8_t dpp = lerp(DOUBLED_PAWN_PENALTY[MIDGAME], DOUBLED_PAWN_PENALTY[ENDGAME], phase);
-    int8_t tpp = lerp(TRIPLED_PAWN_PENALTY[MIDGAME], TRIPLED_PAWN_PENALTY[ENDGAME], phase);
-    int8_t ipp = lerp(ISOLATED_PAWN_PENALTY[MIDGAME], ISOLATED_PAWN_PENALTY[ENDGAME], phase);
+    const int8_t dpp = lerp(DOUBLED_PAWN_PENALTY[MIDGAME], DOUBLED_PAWN_PENALTY[ENDGAME], phase);
+    const int8_t tpp = lerp(TRIPLED_PAWN_PENALTY[MIDGAME], TRIPLED_PAWN_PENALTY[ENDGAME], phase);
+    const int8_t ipp = lerp(ISOLATED_PAWN_PENALTY[MIDGAME], ISOLATED_PAWN_PENALTY[ENDGAME], phase);
 
     for (uint8_t file = 0; file < 8; file++) {
         score += (pawn_file_counts[(int8_t)chess::Color::WHITE][file] == 2 ? dpp : 0);
@@ -382,24 +415,22 @@ int32_t score_board(chess::Board& board) {
         }
     }
 
-    int8_t ofnkp = lerp(OPEN_FILE_NEAR_KING_PENALTY[MIDGAME], OPEN_FILE_NEAR_KING_PENALTY[ENDGAME], phase);
-    int8_t white_king_file = chess::Square(board.pieces(chess::PieceType::KING, chess::Color::WHITE).lsb()).file();
-    int8_t black_king_file = chess::Square(board.pieces(chess::PieceType::KING, chess::Color::WHITE).lsb()).file();
+    const int8_t ofnkp = lerp(OPEN_FILE_NEAR_KING_PENALTY[MIDGAME], OPEN_FILE_NEAR_KING_PENALTY[ENDGAME], phase);
+    const int8_t white_king_file = chess::Square(board.pieces(chess::PieceType::KING, chess::Color::WHITE).lsb()).file();
+    const int8_t black_king_file = chess::Square(board.pieces(chess::PieceType::KING, chess::Color::WHITE).lsb()).file();
 
-    if (
-        pawn_file_counts[(int8_t)chess::Color::WHITE][white_king_file] == 0 ||
-        pawn_file_counts[(int8_t)chess::Color::WHITE][std::max(white_king_file-1, 0)] == 0 ||
-        pawn_file_counts[(int8_t)chess::Color::WHITE][std::min(white_king_file+1, 7) == 0]
-    ) {
-        score += ofnkp;
+    #pragma unroll
+    for (int8_t file = std::max(white_king_file-1, 0); file < std::min(white_king_file+1, 7); file++) {
+        if (pawn_file_counts[(int8_t)chess::Color::WHITE][file] == 0) {
+            score += ofnkp;
+        }
     }
 
-    if (
-        pawn_file_counts[(int8_t)chess::Color::BLACK][black_king_file] == 0 ||
-        pawn_file_counts[(int8_t)chess::Color::BLACK][std::max(black_king_file-1, 0)] == 0 ||
-        pawn_file_counts[(int8_t)chess::Color::BLACK][std::min(black_king_file+1, 7) == 0]
-    ) {
-        score -= ofnkp;
+    #pragma unroll
+    for (int8_t file = std::max(black_king_file-1, 0); file < std::min(black_king_file+1, 7); file++) {
+        if (pawn_file_counts[(int8_t)chess::Color::BLACK][file] == 0) {
+            score -= ofnkp;
+        }
     }
 
     score *= COLOR_MOD[board.sideToMove()];
@@ -419,14 +450,23 @@ void generate_pv_line(chess::Movelist& pv_line, chess::Board& board) {
     hashes.clear();
 
     while (position_table.count(zh) && (hashes.find(zh) == hashes.end())) {
-        if (position_table[zh].best_move != chess::Move::NO_MOVE) {
-            pv_line.add(position_table[zh].best_move);
-            nboard.makeMove(position_table[zh].best_move);
+        if (position_table[zh].best_move != chess::Move::NO_MOVE && nboard.isGameOver().second == chess::GameResult::NONE && position_table[zh].flag == pt_flag::EXACT) {
+            chess::Move pv_move = position_table[zh].best_move;
+
+            chess::Movelist legal_moves;
+            chess::movegen::legalmoves(legal_moves, nboard);
+
+            if (std::find(legal_moves.begin(), legal_moves.end(), pv_move) == legal_moves.end()) {
+                return;
+            }
+
+            pv_line.add(pv_move);
+            nboard.makeMove(pv_move);
             hashes.insert(zh);
             zh = nboard.zobrist();
         }
         else {
-            break;
+            return;
         }
     }
 }
@@ -817,6 +857,8 @@ void iterative_deepening() {
 
 
 int main() {
+    generate_passing_fields();
+
     while (true) {
         std::thread* search_thread = nullptr;
         std::string cmd;
